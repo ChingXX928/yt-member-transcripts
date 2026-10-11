@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+out/
+laoyu_txt/
+_sample/
+_smoke/
+cookies.txt
+*.cookies.txt
