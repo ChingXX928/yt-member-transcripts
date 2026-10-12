@@ -152,9 +152,9 @@ YouTube 常在同一段紀錄裡同時寫會員提示和「沒有字幕」。兩
 
 字幕網址若被丟棄，常見原因是 YouTube 要求 PO Token。請看 [yt-dlp 的 PO Token 說明](https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide)。yt-dlp 也可能提示缺少 JavaScript runtime；請看 [EJS](https://github.com/yt-dlp/yt-dlp/wiki/EJS)。這兩項都不是本程式內建的功能。
 
-## 公開這個倉庫之前
+## 不要放進版本庫
 
-版本庫目前的歷史只有程式、測試與說明，沒有 cookie，也沒有下載下來的字幕。公開之後，下列內容仍不應進入 Git：
+下列內容不應進入 Git：
 
 - 任何 cookie 檔。外流等同交出該 Google 帳號的工作階段。
 - `md/`、`txt/`、`raw/`、`meta/` 和你的輸出目錄。裡面是會員內容的正文。
@@ -162,4 +162,6 @@ YouTube 常在同一段紀錄裡同時寫會員提示和「沒有字幕」。兩
 
 只下載你的帳號已經可以觀看的內容。會員字幕的權利依創作者與 YouTube 的約定而定；把下載結果提交到公開倉庫或轉傳給他人，通常超出個人收看範圍。
 
-本倉庫沒有授權條款。選定授權之前，他人沒有預設的重用許可。使用 yt-dlp 存取 YouTube 時，須同時遵守 YouTube 服務條款，以及你和頻道之間的會員條款。
+## 授權
+
+程式以 [MIT License](LICENSE) 授權。使用 yt-dlp 存取 YouTube 時，須同時遵守 YouTube 服務條款，以及你和頻道之間的會員條款。

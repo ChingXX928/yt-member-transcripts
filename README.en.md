@@ -152,9 +152,9 @@ If you want your own transcript, the tool prints sample commands. For Cantonese,
 
 Caption URLs are sometimes discarded because YouTube requires a PO Token. See the [yt-dlp PO Token Guide](https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide). yt-dlp may also warn that no JavaScript runtime is available; see [EJS](https://github.com/yt-dlp/yt-dlp/wiki/EJS). Neither feature is built into this program.
 
-## Before making this repository public
+## Do not commit these files
 
-The history of this repository contains the program, tests, and these documents. It does not contain cookies or downloaded transcripts. After the repository is public, the following still must stay out of Git:
+Keep the following out of Git:
 
 - Any cookie file. Publishing it hands over that Google account session.
 - `md/`, `txt/`, `raw/`, `meta/`, and your output directory. Those files contain membership content.
@@ -162,4 +162,6 @@ The history of this repository contains the program, tests, and these documents.
 
 Download only what your account can already watch. Rights in member subtitles follow the creator’s terms and YouTube’s terms. Committing the downloaded text to a public repository, or passing it on, is usually outside personal viewing.
 
-This repository has no license file. Until you choose one, other people do not have a default right to reuse it. Accessing YouTube through yt-dlp also has to follow the YouTube Terms of Service and the membership terms between you and the channel.
+## License
+
+The program is released under the [MIT License](LICENSE). Accessing YouTube through yt-dlp also has to follow the YouTube Terms of Service and the membership terms between you and the channel.
