@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 """
-YouTube 會員片字幕 → Markdown / TXT / JSON。
+下載你已可觀看的 YouTube 會員影片字幕，存成 Markdown、TXT 與 JSON。不下載影片。
 
-餵 NotebookLM 或其他 AI：上傳 out/md/ 入面逐個 .md。
-JSON 會把鍵名都算進字數，一條片一個 Markdown 更穩。
+給模型使用時，上傳 out/md/ 裡的個別 .md。說明見 README.md 與 README.en.md。
 
 例子：
   .\\.venv\\Scripts\\python.exe yt_member_transcripts.py --self-test
   .\\.venv\\Scripts\\python.exe yt_member_transcripts.py --members-of UCxxxx --dry-run
-  .\\.venv\\Scripts\\python.exe yt_member_transcripts.py "播放清單URL" --limit 2
-  .\\.venv\\Scripts\\python.exe yt_member_transcripts.py "播放清單URL" --out .\\laoyu_txt
+  .\\.venv\\Scripts\\python.exe yt_member_transcripts.py "播放清單URL" --limit 2 --out .\\out
 """
 
 from __future__ import annotations
@@ -60,12 +58,14 @@ CHANNEL_ID_RE = re.compile(r"^UC[A-Za-z0-9_-]{22}$")
 SINGLE_VIDEO_RE = re.compile(r"(?:v=|youtu\.be/|shorts/)([A-Za-z0-9_-]{11})")
 
 COOKIE_HINT = (
-    "登入提示：Windows 上 Chrome 經常因為 app-bound encryption 讀唔到 cookie。\n"
-    "改試 --browser firefox 或 --browser edge。\n"
-    "或者開一個無痕視窗登入 YouTube，去 https://www.youtube.com/robots.txt ，\n"
-    "用擴充功能匯出 Netscape 格式 cookies.txt，再加 --cookies cookies.txt。\n"
-    "匯出後關掉個無痕視窗，唔好再喺瀏覽器開 YouTube，否則 cookie 會被輪換。\n"
-    "帳號一定要已經加入咗該頻道會員。"
+    "登入提示：Windows 上的 Chrome 常因 app-bound encryption 讀不到 cookie。\n"
+    "可改用 --browser firefox 或 --browser edge。\n"
+    "也可開無痕視窗，只登入會員帳號，開啟 https://www.youtube.com/robots.txt ，\n"
+    "用擴充功能匯出 Netscape 格式的 cookies.txt，再加 --cookies cookies.txt。\n"
+    "匯出後關閉該視窗，不要再以這個工作階段開啟 YouTube，否則 cookie 會被輪換。\n"
+    "瀏覽器若同時登入多個 Google 帳號，請先把會員帳號切成目前帳號再匯出。\n"
+    "本工具使用 cookie 裡的預設帳號，不會切換 authuser。\n"
+    "使用的帳號必須已加入該頻道會員。不要把 cookie 提交到 Git。"
 )
 JS_HINT = (
     "yt-dlp 提示未找到 JavaScript runtime。字幕多數仍可下載。\n"
@@ -517,6 +517,47 @@ def fmt_date(upload_date: str | None) -> str:
     return f"{upload_date[:4]}-{upload_date[4:6]}-{upload_date[6:]}"
 
 
+INVALID_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+LEADING_COMPACT_DATE = re.compile(r"^(\d{8})(?:\s+|$)")
+MAX_FILENAME_STEM = 140
+
+
+def readable_stem(meta: dict, used: set[str] | None = None) -> str:
+    """人看的檔名：YYYY-MM-DD 加上標題。原始字幕和進度仍用影片 ID。"""
+
+    title = one_line(str(meta.get("title") or ""))
+    date = str(meta.get("date") or "")
+    match = LEADING_COMPACT_DATE.match(title)
+    if match:
+        compact = match.group(1)
+        date = f"{compact[:4]}-{compact[4:6]}-{compact[6:]}"
+        title = title[match.end() :].strip()
+    title = INVALID_FILENAME_CHARS.sub(" ", title)
+    title = re.sub(r"\s+", " ", title).strip(" .")
+    if date and title:
+        stem = f"{date} {title}"
+    else:
+        stem = date or title or str(meta.get("id") or "video")
+    stem = stem.strip(" .")
+    if len(stem) > MAX_FILENAME_STEM:
+        stem = stem[:MAX_FILENAME_STEM].rstrip(" .")
+    video_id = str(meta.get("id") or "")
+    if used is not None and stem in used:
+        suffix = f" {video_id}" if video_id else ""
+        room = MAX_FILENAME_STEM - len(suffix)
+        base = stem[:room].rstrip(" .") if room > 0 else video_id
+        stem = f"{base}{suffix}".strip() or video_id or "video"
+        serial = 2
+        unique = stem
+        while unique in used:
+            unique = f"{stem}-{serial}"
+            serial += 1
+        stem = unique
+    if used is not None:
+        used.add(stem)
+    return stem
+
+
 def fmt_duration(seconds: int | float | None) -> str:
     if not seconds:
         return ""
@@ -794,6 +835,7 @@ def auth_failure(text: str) -> bool:
             "private video",
             "login required",
             "this video is available to this channel's members",
+            "cookies are no longer valid",
         )
     )
 
@@ -801,6 +843,16 @@ def auth_failure(text: str) -> bool:
 def no_subtitle_message(text: str) -> bool:
     lowered = text.lower()
     return "there are no subtitles" in lowered or "no subtitles" in lowered
+
+
+def failure_message(log: str) -> str:
+    """會員提示和「沒有字幕」常出現在同一段紀錄。有後者時，以後者為準。"""
+
+    if no_subtitle_message(log):
+        return "這支影片沒有可下載的字幕"
+    if auth_failure(log):
+        return "登入後才看得到，或 cookie 已失效"
+    return "沒有字幕"
 
 
 class _YtdlpLog:
@@ -959,6 +1011,7 @@ def build_meta(video: dict, info: dict, subtitle: Path, transcript: str, index: 
 
 def write_video_outputs(out_dir: Path, meta: dict) -> None:
     video_id = meta["id"]
+    meta["file_stem"] = readable_stem(meta)
     (out_dir / "meta").mkdir(parents=True, exist_ok=True)
     (out_dir / "md").mkdir(parents=True, exist_ok=True)
     (out_dir / "txt").mkdir(parents=True, exist_ok=True)
@@ -967,8 +1020,41 @@ def write_video_outputs(out_dir: Path, meta: dict) -> None:
         encoding="utf-8",
         newline="\n",
     )
-    (out_dir / "md" / f"{video_id}.md").write_text(render_md(meta), encoding="utf-8", newline="\n")
-    (out_dir / "txt" / f"{video_id}.txt").write_text(render_txt(meta), encoding="utf-8", newline="\n")
+    stem = meta["file_stem"]
+    (out_dir / "md" / f"{stem}.md").write_text(render_md(meta), encoding="utf-8", newline="\n")
+    (out_dir / "txt" / f"{stem}.txt").write_text(render_txt(meta), encoding="utf-8", newline="\n")
+
+
+def publish_readable_files(out_dir: Path, metas: list[dict]) -> None:
+    """把 md/txt 統一寫成日期加標題，並清掉舊的影片 ID 檔名。"""
+
+    md_dir = out_dir / "md"
+    txt_dir = out_dir / "txt"
+    meta_dir = out_dir / "meta"
+    md_dir.mkdir(parents=True, exist_ok=True)
+    txt_dir.mkdir(parents=True, exist_ok=True)
+    meta_dir.mkdir(parents=True, exist_ok=True)
+    used: set[str] = set()
+    keep_md: set[str] = set()
+    keep_txt: set[str] = set()
+    for meta in metas:
+        stem = readable_stem(meta, used)
+        meta["file_stem"] = stem
+        md_name = f"{stem}.md"
+        txt_name = f"{stem}.txt"
+        (md_dir / md_name).write_text(render_md(meta), encoding="utf-8", newline="\n")
+        (txt_dir / txt_name).write_text(render_txt(meta), encoding="utf-8", newline="\n")
+        keep_md.add(md_name)
+        keep_txt.add(txt_name)
+        (meta_dir / f"{meta['id']}.json").write_text(
+            json.dumps(meta, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+    for folder, keep in ((md_dir, keep_md), (txt_dir, keep_txt)):
+        for path in folder.iterdir():
+            if path.is_file() and path.name not in keep:
+                path.unlink()
 
 
 def load_metas(out_dir: Path) -> list[dict]:
@@ -989,6 +1075,7 @@ def load_metas(out_dir: Path) -> list[dict]:
 
 def write_indexes(out_dir: Path, playlist_title: str = "") -> int:
     metas = load_metas(out_dir)
+    publish_readable_files(out_dir, metas)
     jsonl_path = out_dir / "transcripts.jsonl"
     with jsonl_path.open("w", encoding="utf-8", newline="\n") as handle:
         for meta in metas:
@@ -1003,14 +1090,14 @@ def write_indexes(out_dir: Path, playlist_title: str = "") -> int:
     if playlist_title:
         lines.append(playlist_title)
         lines.append("")
-    lines.append(f"共 {len(metas)} 條。餵 AI 請上傳 `md/` 入面逐個檔。")
+    lines.append(f"共 {len(metas)} 支。給模型使用時，請上傳 `md/` 裡的個別檔案。")
     lines.append("")
     lines.append("| 序 | 日期 | 標題 |")
     lines.append("| --- | --- | --- |")
     for meta in metas:
         title = md_cell(meta.get("title") or meta["id"])
         lines.append(
-            f"| {meta.get('playlist_index') or ''} | {meta.get('date') or ''} | [{title}](md/{meta['id']}.md) |"
+            f"| {meta.get('playlist_index') or ''} | {meta.get('date') or ''} | [{title}](<md/{meta['file_stem']}.md>) |"
         )
     lines.append("")
     (out_dir / "index.md").write_text("\n".join(lines), encoding="utf-8", newline="\n")
@@ -1018,8 +1105,8 @@ def write_indexes(out_dir: Path, playlist_title: str = "") -> int:
     combined_parts = [
         "# 字幕合集",
         "",
-        "餵 NotebookLM 或其他 AI 時，優先上傳 `md/` 入面逐個檔。",
-        "一個來源大約 50 萬字，合集太大就會被拒。",
+        "給模型使用時，請上傳 `md/` 裡的個別檔案。",
+        "合集把全部字幕放在同一個檔案，容易超過單一來源上限。",
         "",
     ]
     total_chars = 0
@@ -1082,11 +1169,7 @@ def process_video(
                     info = {}
         subtitle = choose_subtitle(raw_dir, video["id"], args.lang, fallback=not args.no_fallback)
         if subtitle is None:
-            message = "冇字幕"
-            if auth_failure(log):
-                message = "登入後先睇到，或者 cookie 無效"
-            elif no_subtitle_message(log):
-                message = "這條片沒有可下載字幕"
+            message = failure_message(log)
             print(f"! {video['id']} {message}")
             print(whisper_hint(video["id"]))
             return {"id": video["id"], "title": video["title"], "status": "fail", "error": message}
@@ -1234,7 +1317,7 @@ def print_summary(out_dir: Path, results: list[dict], total_chars: int) -> None:
     print(f"索引：{out_dir / 'index.md'}")
     print(f"合集約 {total_chars} 字：{out_dir / 'combined.md'}")
     if total_chars > 400_000:
-        print("合集超過約 40 萬字。NotebookLM 一個來源上限大約 50 萬字，請改傳 md/ 入面逐個檔。")
+        print("合集的字幕正文已超過 40 萬個字元。請改上傳 md/ 裡的個別檔案。")
     if counts["fail"]:
         print(f"失敗清單：{out_dir / 'report.json'}")
         print("再跑同一條指令會跳過已完成的片，只重試未成功的。")
@@ -1242,19 +1325,19 @@ def print_summary(out_dir: Path, results: list[dict], total_chars: int) -> None:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="下載你已經可以睇到的 YouTube 會員片字幕，轉成 Markdown / TXT / JSON。",
+        description="下載你已可觀看的 YouTube 會員影片字幕，轉成 Markdown、TXT 與 JSON。不下載影片。",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "例子：\n"
-            "  python yt_member_transcripts.py --members-of UCxxxx --dry-run\n"
+            "  python yt_member_transcripts.py --members-of https://www.youtube.com/@channel --dry-run\n"
             "  python yt_member_transcripts.py \"https://www.youtube.com/playlist?list=UUMOxxxx\" --limit 2\n"
-            "  python yt_member_transcripts.py \"播放清單URL\" --out .\\laoyu_txt --browser firefox\n"
             "  python yt_member_transcripts.py --batch-file urls.txt --cookies cookies.txt\n"
             "\n"
-            "頻道 ID UCxxxx 的會員清單：\n"
-            "  全部 UUMO + xxxx    長片 UUMF + xxxx\n"
-            "  Shorts UUMS + xxxx  直播 UUMV + xxxx\n"
-            "會員專區頁通常只得最近幾條，唔好靠嗰個頁面攞全套。"
+            "頻道 ID 為 UC 加 22 字。去掉 UC 後：\n"
+            "  全部會員片 UUMO    長片 UUMF\n"
+            "  Shorts UUMS         直播 UUMV\n"
+            "會員專區頁面通常只有最近幾支。完整清單請用 --members-of 或上述播放清單。\n"
+            "說明見 README.md 與 README.en.md。"
         ),
     )
     parser.add_argument("url", nargs="?", help="播放清單、單條片，或頻道 URL")

@@ -6,4 +6,5 @@ laoyu_txt/
 _sample/
 _smoke/
 cookies.txt
+cookies-*.txt
 *.cookies.txt

@@ -12,6 +12,44 @@ import yt_member_transcripts as m
 
 
 class CleanTests(unittest.TestCase):
+    def test_readable_stem_uses_date_and_title(self):
+        meta = {
+            "id": "abc12345678",
+            "date": "2026-10-12",
+            "title": "20261012 老余早課：看不懂的單？",
+        }
+        self.assertEqual(m.readable_stem(meta), "2026-10-12 老余早課：看不懂的單？")
+
+    def test_readable_stem_prefers_date_in_the_title(self):
+        meta = {
+            "id": "abc12345678",
+            "date": "2026-07-08",
+            "title": "20260709 老余早課：美股下殺要停頓了？",
+        }
+        self.assertEqual(m.readable_stem(meta), "2026-07-09 老余早課：美股下殺要停頓了？")
+
+    def test_readable_stem_strips_windows_reserved_characters(self):
+        meta = {"id": "abc12345678", "date": "2026-10-12", "title": "a/b:c*?"}
+        self.assertEqual(m.readable_stem(meta), "2026-10-12 a b c")
+
+    def test_no_subtitle_outranks_members_warning(self):
+        log = (
+            "WARNING: This video is available to this channel's members on level: example\n"
+            "There are no subtitles for the requested languages\n"
+        )
+        self.assertEqual(m.failure_message(log), "這支影片沒有可下載的字幕")
+
+    def test_rotated_cookies_are_an_auth_failure(self):
+        log = "WARNING: The provided YouTube account cookies are no longer valid."
+        self.assertEqual(m.failure_message(log), "登入後才看得到，或 cookie 已失效")
+
+    def test_readable_stem_disambiguates_duplicates(self):
+        first = {"id": "aaaabbbbccc", "date": "2026-10-12", "title": "同一標題"}
+        second = {"id": "ddddeeeefff", "date": "2026-10-12", "title": "同一標題"}
+        used: set[str] = set()
+        self.assertEqual(m.readable_stem(first, used), "2026-10-12 同一標題")
+        self.assertEqual(m.readable_stem(second, used), "2026-10-12 同一標題 ddddeeeefff")
+
     def test_json3_joins_new_words_and_splits_on_pause(self):
         raw = json.dumps(
             {

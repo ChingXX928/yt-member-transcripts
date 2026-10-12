@@ -1,99 +1,165 @@
 # YouTube 會員影片字幕
 
-本工具將使用者已可觀看的 YouTube 會員影片字幕下載為 Markdown、TXT 與 JSON，不下載影片本體。
+[English](README.en.md)
 
-若要供 NotebookLM、Claude 或 GPT 使用，請上傳 `md/` 目錄中的個別 `.md` 檔。
+把你的帳號已經可以觀看的 YouTube 會員影片字幕，存成 Markdown、TXT 與 JSON。這個工具不下載影片，也不下載音訊。
 
-Markdown 比單一大型 JSON 更適合作為模型輸入。每支影片各自包含標題、日期、連結與分段字幕。JSON 的鍵名亦會計入字數；若將數百支影片併為一個檔案，很容易超過 NotebookLM 單一來源約五十萬字的上限。`all.json` 與 `transcripts.jsonl` 保留給程式讀取。
-
-## 會員專區頁面的限制
-
-YouTube 會員專區目前通常只顯示最近數支影片。完整的會員影片清單須使用系統播放清單。頻道 ID 以 `UC` 起首，其後為 22 個字元。去掉 `UC` 之後，可依下表組成清單：
-
-| 範圍 | 播放清單 |
-| --- | --- |
-| 全部會員影片 | `https://www.youtube.com/playlist?list=UUMO` + 其餘 22 字 |
-| 長片 | `UUMF` + 其餘 22 字 |
-| Shorts | `UUMS` + 其餘 22 字 |
-| 直播 | `UUMV` + 其餘 22 字 |
-
-頻道 ID 可在頻道頁面依序開啟「簡介」、「更多」、「分享頻道」，再複製頻道 ID。亦可直接執行：
-
-```powershell
-.\.venv\Scripts\python.exe yt_member_transcripts.py --members-of "https://www.youtube.com/@頻道" --dry-run
-```
-
-`--dry-run` 只列出影片，不進行下載。
+給 NotebookLM、Claude 或 GPT 使用時，上傳 `md/` 裡的個別 `.md`。每支影片一個檔，內含標題、日期、連結和整理後的字幕。
 
 ## 安裝
 
-此資料夾已包含 `.venv`，且已安裝 yt-dlp。若在另一部電腦使用，請執行：
+需要 Python 3.11 或以上。Windows 有 Python 啟動器時用 `py -3`；沒有就改用 `python`。
 
 ```powershell
-cd C:\Users\ching\yt-member-transcripts
 py -3 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -U -r requirements.txt
 .\.venv\Scripts\python.exe yt_member_transcripts.py --self-test
 ```
 
-## 先以兩支影片試行
+macOS 與 Linux：
 
-```powershell
-cd C:\Users\ching\yt-member-transcripts
-.\.venv\Scripts\python.exe yt_member_transcripts.py "https://www.youtube.com/playlist?list=UUMOxxxx" --out .\laoyu_txt --limit 2
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -U -r requirements.txt
+.venv/bin/python yt_member_transcripts.py --self-test
 ```
 
-請查看 `laoyu_txt\md\`。內容無誤後，移除 `--limit` 即可處理全部影片，適合長時間執行。若中途中斷，以同一指令再次執行時，已完成的影片會被略過。
+依賴只有 [yt-dlp](https://github.com/yt-dlp/yt-dlp)。`.venv/` 不會進入版本庫。`--self-test` 不連網。
 
-預設讀取 Chrome 的 cookie。在 Windows 上，Chrome 的 cookie 經常無法讀取（app-bound encryption）。若失敗，可改用下列指令：
+## 登入
 
-```powershell
-.\.venv\Scripts\python.exe yt_member_transcripts.py "播放清單URL" --browser firefox --out .\laoyu_txt
-.\.venv\Scripts\python.exe yt_member_transcripts.py "播放清單URL" --browser edge --out .\laoyu_txt
-```
-
-亦可使用無痕視窗登入 YouTube，只開啟 `https://www.youtube.com/robots.txt`，再以擴充功能匯出 Netscape 格式的 `cookies.txt`，隨即關閉該無痕視窗，且不要再於瀏覽器中開啟 YouTube：
+帳號必須已經加入該頻道的會員。程式預設讀取 Chrome 的 cookie。Windows 上的 Chrome 常因 app-bound encryption 讀不到 cookie，可改用：
 
 ```powershell
-.\.venv\Scripts\python.exe yt_member_transcripts.py "播放清單URL" --cookies .\cookies.txt --out .\laoyu_txt
+.\.venv\Scripts\python.exe yt_member_transcripts.py "播放清單URL" --browser firefox --out .\out
+.\.venv\Scripts\python.exe yt_member_transcripts.py "播放清單URL" --browser edge --out .\out
 ```
 
-每支影片只下載一種最合適的字幕，不會一併取得所有翻譯軌。
+較穩妥的做法是匯出一份 Netscape cookie 檔：
 
-使用的帳號必須已加入該頻道的會員。請勿將 `cookies.txt` 交給他人。
+1. 開無痕視窗，只登入要使用的那個 Google 帳號。
+2. 瀏覽器若同時登入多個帳號，先把會員帳號切成目前帳號再匯出。YouTube 會使用 cookie 裡的預設帳號。這個工具不會加上 `authuser`，也不能指定第幾個帳號。
+3. 只開啟 <https://www.youtube.com/robots.txt>。
+4. 用擴充功能匯出 Netscape 格式的 `cookies.txt`。
+5. 關閉該無痕視窗。不要再用這個工作階段開啟 YouTube。YouTube 會輪換登入 cookie，匯出的檔案隨即失效。
 
-若 Chrome 有多個設定檔，請加上 `--browser-profile "Profile 1"`。
+```powershell
+.\.venv\Scripts\python.exe yt_member_transcripts.py "播放清單URL" --cookies .\cookies.txt --out .\out
+```
+
+Chrome 有多個設定檔時，加上 `--browser-profile "Profile 1"`。公開影片可用 `--no-cookies`。
+
+`cookies.txt`、`cookies-*.txt` 與 `*.cookies.txt` 已列入 `.gitignore`。cookie 是登入工作階段，不要提交到 Git，也不要貼到問題回報。
+
+## 指定影片
+
+會員專區頁面通常只列出最近幾支，不是完整清單。頻道 ID 的形式是 `UC` 再加 22 個字元。去掉開頭的 `UC` 之後，系統播放清單是：
+
+| 範圍 | 播放清單 ID |
+| --- | --- |
+| 全部會員影片 | `UUMO` + 其餘 22 字 |
+| 長片 | `UUMF` + 其餘 22 字 |
+| Shorts | `UUMS` + 其餘 22 字 |
+| 直播 | `UUMV` + 其餘 22 字 |
+
+頻道 ID 可在頻道頁的「簡介」→「更多」→「分享頻道」複製，或由程式解析：
+
+```powershell
+.\.venv\Scripts\python.exe yt_member_transcripts.py --members-of "https://www.youtube.com/@頻道" --dry-run
+```
+
+`--members-of` 接受頻道 URL、`@handle` 或 `UC...`。`--members-kind` 可選 `all`（預設）、`videos`、`shorts`、`live`。
+
+`--dry-run` 只列出影片並寫入 `playlist.json`，不下載字幕。`--limit 2` 是在整份清單列舉完成後，只處理開頭的 N 支。會員清單通常由新到舊，所以這是最新的 N 支，不是「跳過已完成的影片之後再取 N 支」。已完成的影片會在這 N 支裡面被跳過。
+
+先試兩支：
+
+```powershell
+.\.venv\Scripts\python.exe yt_member_transcripts.py "https://www.youtube.com/playlist?list=UUMOxxxx" --out .\out --limit 2
+```
+
+確認 `out\md\` 之後，去掉 `--limit` 即處理清單內全部影片。中斷後用同一指令再跑。`meta/{影片ID}.json` 裡的字幕正文達到 5 個字元，即視為完成並跳過。`--redo` 會重新下載。每支新處理的影片之間預設暫停 2 秒，可用 `--sleep` 調整。
+
+網址同時有 `v=` 和 `list=` 時，預設只處理那一支影片。要跟整份播放清單，加 `--yes-playlist`。
+
+多個網址可放在文字檔，一行一個，`#` 開頭是註解：
+
+```powershell
+.\.venv\Scripts\python.exe yt_member_transcripts.py --batch-file .\urls.txt --cookies .\cookies.txt --out .\out
+```
+
+正在直播或尚未開始的項目會跳過。標成私人、已刪除或無法取得的項目也會跳過。
+
+## 檔名
+
+人讀的檔案是 `YYYY-MM-DD 標題.md` 與同名 `.txt`。
+
+- 標題以 `YYYYMMDD` 開頭時，檔名採用這組日期，並從標題移除這 8 個數字。上傳日不同時，也不會變成兩個日期疊在一起。
+- 否則使用 YouTube 上傳日。上傳日來自 8 位數字 `YYYYMMDD`，寫成 `YYYY-MM-DD`。
+- `< > : " / \ | ? *` 與控制字元改成空格。連續空白收成一個，結尾的空格和句點會去掉。全形標點保留。
+- 主檔名最長 140 個字元。
+- 同一輪寫入索引時，若主檔名重複，後者會加上影片 ID。
+- `index.md` 的日期欄是上傳日，所以可以和檔名上的日期不同。
+
+`meta/`、`raw/`、`logs/` 仍以影片 ID 命名。續傳和 `--rebuild` 靠這三處辨認影片。
 
 ## 輸出
 
+預設目錄是 `out/`。
+
 ```text
-laoyu_txt/
-  md/影片ID.md          供模型使用，應上傳此檔
-  txt/影片ID.txt        純文字
-  all.json              全部影片合成的 JSON
-  transcripts.jsonl     每行一筆，供程式使用
-  combined.md           合集。檔案過大時不宜上傳
-  index.md              目錄
-  raw/                  原始字幕，可用 --rebuild 重建
-  report.json           失敗清單
+out/
+  md/YYYY-MM-DD 標題.md    給模型，上傳這個
+  txt/YYYY-MM-DD 標題.txt  純文字
+  index.md                 目錄。日期欄是上傳日
+  combined.md              全部字幕合在一個檔
+  all.json                 程式讀取
+  transcripts.jsonl        一行一筆，程式讀取
+  meta/{影片ID}.json       進度與中介資料，含 file_stem
+  raw/{影片ID}/            原始字幕
+  logs/{影片ID}.log        該支影片的 yt-dlp 紀錄
+  report.json              失敗清單
+  playlist.json            本次處理的清單
 ```
 
-清洗邏輯修改之後，可在不上網的情況下重製文字：
+每支影片只下載一種字幕。預設語言是 `zh-Hant`。人手字幕優先於自動字幕，也不會把其他語言的翻譯軌全部抓下來。沒有偏好語言時會改用相近語言，除非加上 `--no-fallback`。Markdown 會標示語言，以及「人手」或「自動」。
+
+`combined.md` 只方便檢視。字幕正文合計超過 40 萬個字元時，程式會提醒。這是字元數，不是詞數。NotebookLM（現稱 Gemini Notebook）公開的單一來源上限以詞數和檔案大小計算，來源個數另視方案而定，而且會調整。上傳個別 `.md`。
+
+清洗規則改動之後，可離線重製文字：
 
 ```powershell
-.\.venv\Scripts\python.exe yt_member_transcripts.py --rebuild --out .\laoyu_txt
+.\.venv\Scripts\python.exe yt_member_transcripts.py --rebuild --out .\out
 ```
+
+`--rebuild` 只讀取 `raw/`，不會連網。
 
 ## 沒有字幕時
 
-程式不會自動下載影片。若某支影片確實沒有字幕，程式會印出 whisper 指令。廣東話內容使用 `--language zh`，`medium` 模型通常已足敷使用。
+程式不會自動下載影片或音訊，也不會自動執行 Whisper。
 
-## 舊稿的問題
+`report.json` 的 `error` 只有三種：
 
-- 單支影片失敗即導致整批結束，已下載的字幕亦不會轉成文字。
-- 文件寫有 `--batch-file`，程式卻未實作。
-- 進度被隱藏，長時間執行時看似當機。
-- 只刪除連續重複的一行。YouTube 自動字幕的 VTT 為滾動視窗，同一句會以不同文字重複出現。
-- `--sub-langs zh.*` 會下載每種語言的翻譯，容易觸發 HTTP 429。
-- 只接受 `.srt`，實際許多自動字幕為 `.vtt` 或 `.json3`。
-- 會員專區頁面並非完整清單。
+| 紀錄內容 | `error` |
+| --- | --- |
+| 寫明沒有所請求的字幕 | `這支影片沒有可下載的字幕` |
+| 沒有上一句，但有登入或會員錯誤 | `登入後才看得到，或 cookie 已失效` |
+| 兩者都沒有 | `沒有字幕` |
+
+YouTube 常在同一段紀錄裡同時寫會員提示和「沒有字幕」。兩句都在時，以沒有字幕為準。會員提示單獨出現，才算登入或會員資格的問題。
+
+若要自行轉錄，程式會印出範例指令。粵語內容可用 `whisper ... --model medium --language zh`。Whisper 與音訊下載都要另外安裝、另外執行。
+
+字幕網址若被丟棄，常見原因是 YouTube 要求 PO Token。請看 [yt-dlp 的 PO Token 說明](https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide)。yt-dlp 也可能提示缺少 JavaScript runtime；請看 [EJS](https://github.com/yt-dlp/yt-dlp/wiki/EJS)。這兩項都不是本程式內建的功能。
+
+## 公開這個倉庫之前
+
+版本庫目前的歷史只有程式、測試與說明，沒有 cookie，也沒有下載下來的字幕。公開之後，下列內容仍不應進入 Git：
+
+- 任何 cookie 檔。外流等同交出該 Google 帳號的工作階段。
+- `md/`、`txt/`、`raw/`、`meta/` 和你的輸出目錄。裡面是會員內容的正文。
+- `--out` 若不用 `out/`，該目錄不會被自動忽略，必須自行寫進 `.gitignore`。`out/` 已忽略。
+
+只下載你的帳號已經可以觀看的內容。會員字幕的權利依創作者與 YouTube 的約定而定；把下載結果提交到公開倉庫或轉傳給他人，通常超出個人收看範圍。
+
+本倉庫沒有授權條款。選定授權之前，他人沒有預設的重用許可。使用 yt-dlp 存取 YouTube 時，須同時遵守 YouTube 服務條款，以及你和頻道之間的會員條款。
